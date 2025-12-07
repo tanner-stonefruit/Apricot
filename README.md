@@ -1,6 +1,8 @@
-# Apricot 🍑 — Stonefruit Window Snapper for macOS
+# Apricot: Window Snapper (+ other tools soon) for macOS
 
-A tiny **menubar** app that snaps the frontmost window into clean layouts via global hotkeys. Built to scratch the “Magnet-lite” itch and practice native macOS patterns (SwiftUI + AppKit + Carbon hotkeys + AX).
+I used mac for most of my life, but then got a windows PC for my work laptop. They have this great too where if you press the windows key +arrow key, it will snap the window you are working on to the top / bottom of your screen or other monitor. 
+
+I'd never built anything for MacOS so I thought it would be cool to do, and I knew I would use it. Feel free to use. 
 
 ---
 

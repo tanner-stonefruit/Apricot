@@ -133,6 +133,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeys: [EventHotKeyRef?] = []
     private var cancellable: AnyCancellable?
     private var prefsWindow: NSWindow?
+    private enum HDir { case left, right }
+    private enum VDir { case up, down }
+    private enum Direction { case left, right, up, down }
+
+    private var lastHorizontal: HDir?
+    private var lastVertical: VDir?
+
+    private func handleDirection(_ dir: Direction) {
+    let cornersEnabled = SettingsModel.shared.enableCorners
+
+    switch dir {
+    case .left, .right:
+
+        let h: HDir = (dir == .left) ? .left : .right
+
+        if cornersEnabled, let v = lastVertical {
+            // We have a vertical context already → snap to corner
+            let target: SnapTarget
+            switch (h, v) {
+            case (.left, .up):    target = .topLeft
+            case (.right, .up):   target = .topRight
+            case (.left, .down):  target = .bottomLeft
+            case (.right, .down): target = .bottomRight
+            }
+
+            snap(target)
+            
+            lastHorizontal = h
+            lastVertical = nil
+        } else {
+            // Just a horizontal half
+            snap(dir == .left ? .left : .right)
+
+            lastHorizontal = h
+            lastVertical = nil
+        }
+        
+        lastHorizontal = h
+
+    case .up, .down:
+        
+        let v: VDir = (dir == .up) ? .up : .down
+        
+        if cornersEnabled, let h = lastHorizontal {
+            // We have a horizontal context already → snap to corner
+            let target: SnapTarget
+            switch (h, v) {
+            case (.left, .up):    target = .topLeft
+            case (.right, .up):   target = .topRight
+            case (.left, .down):  target = .bottomLeft
+            case (.right, .down): target = .bottomRight
+                
+            }
+
+            snap(target)
+            lastVertical = v
+            lastHorizontal = nil
+        } else {
+            // Just a vertical half
+            snap(dir == .up ? .top : .bottom)
+            
+            lastVertical = v
+            lastHorizontal = nil
+        }
+        
+        lastVertical = v
+    }
+}
+
     
     @objc private func quit() {
         NSApp.terminate(nil)
@@ -144,8 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 img.isTemplate = true              // ensure macOS tints it for light/dark
                 btn.image = img
                 btn.imagePosition = .imageOnly
-                // Optional: nudge size if it looks too big/small
-                btn.image?.size = NSSize(width: 18, height: 18) // try 16–20
+                btn.image?.size = NSSize(width: 18, height: 18) 
             }
 
         // Build the dropdown menu
@@ -248,50 +316,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerHotKeys() {
-        let settings = SettingsModel.shared
-        let base = settings.baseModifiers.mask
-        let corners = settings.enableCorners ? (base | UInt32(shiftKey)) : 0
+    let settings = SettingsModel.shared
+    let base = settings.baseModifiers.mask
 
-        // Halves (arrow keys)
-        registerHotKey(keyCode: UInt32(kVK_LeftArrow),  modifiers: base,    id: 1)
-        registerHotKey(keyCode: UInt32(kVK_RightArrow), modifiers: base,    id: 2)
-        registerHotKey(keyCode: UInt32(kVK_UpArrow),    modifiers: base,    id: 3)
-        registerHotKey(keyCode: UInt32(kVK_DownArrow),  modifiers: base,    id: 4)
+    // Halves / directional inputs
+    registerHotKey(keyCode: UInt32(kVK_LeftArrow),  modifiers: base, id: 1)
+    registerHotKey(keyCode: UInt32(kVK_RightArrow), modifiers: base, id: 2)
+    registerHotKey(keyCode: UInt32(kVK_UpArrow),    modifiers: base, id: 3)
+    registerHotKey(keyCode: UInt32(kVK_DownArrow),  modifiers: base, id: 4)
 
-        if settings.enableCorners {
-            registerHotKey(keyCode: UInt32(kVK_LeftArrow),  modifiers: corners, id: 5) // top-left
-            registerHotKey(keyCode: UInt32(kVK_RightArrow), modifiers: corners, id: 6) // top-right
-            registerHotKey(keyCode: UInt32(kVK_DownArrow),  modifiers: corners, id: 7) // bottom-left
-            registerHotKey(keyCode: UInt32(kVK_UpArrow),    modifiers: corners, id: 8) // bottom-right
-        }
+    // Extras
+    registerHotKey(keyCode: UInt32(kVK_Return),     modifiers: base, id: 9)  // maximize
+    registerHotKey(keyCode: UInt32(kVK_ANSI_C),     modifiers: base, id: 10) // center 70%
+}
 
-        // Extras
-        registerHotKey(keyCode: UInt32(kVK_Return),     modifiers: base, id: 9)  // maximize
-        registerHotKey(keyCode: UInt32(kVK_ANSI_C),     modifiers: base, id: 10) // center 70%
-    }
 
     private func registerHotKey(keyCode: UInt32, modifiers: UInt32, id: UInt32) {
         var ref: EventHotKeyRef?
-        var hkID = EventHotKeyID(signature: OSType(0x41505243), id: id) // 'APRC'
+        let hkID = EventHotKeyID(signature: OSType(0x41505243), id: id) // 'APRC'
         RegisterEventHotKey(keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &ref)
         hotKeys.append(ref)
     }
 
     private func handleHotKey(_ id: UInt32) {
-        switch id {
-        case 1: snap(.left)
-        case 2: snap(.right)
-        case 3: snap(.top)
-        case 4: snap(.bottom)
-        case 5: snap(.topLeft)
-        case 6: snap(.topRight)
-        case 7: snap(.bottomLeft)
-        case 8: snap(.bottomRight)
-        case 9: snap(.maximize)
-        case 10: snap(.center70)
-        default: break
-        }
+    switch id {
+    case 1: handleDirection(.left)
+    case 2: handleDirection(.right)
+    case 3: handleDirection(.up)
+    case 4: handleDirection(.down)
+    case 9: snap(.maximize)
+    case 10: snap(.center70)
+    default: break
     }
+}
+
 
     // MARK: - Snapping
 
@@ -305,35 +363,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let screen = screenUnderMouse() ?? NSScreen.main else { return }
         let vf = screen.visibleFrame
         var rect = vf
-
+        
+        let halfW = vf.width / 2.0
+        let halfH = vf.height / 2.0
+        
+        
         switch target {
+            
+        //Halves:
         case .left:
-            rect.size.width = vf.width / 2.0
+            rect.origin.x = vf.minX
+            rect.origin.y = vf.minY
+            rect.size.width = halfW
+            rect.size.height = vf.height
+            
         case .right:
-            rect.origin.x = vf.minX + vf.width / 2.0
-            rect.size.width = vf.width / 2.0
-        case .top:
-            rect.origin.y = vf.minY + vf.height / 2.0
-            rect.size.height = vf.height / 2.0
-        case .bottom:
-            rect.size.height = vf.height / 2.0
+                // Anchor to RIGHT edge
+                rect.size.width  = halfW
+                rect.size.height = vf.height
+                rect.origin.x = vf.maxX - rect.width
+                rect.origin.y = vf.minY
 
-        case .topLeft:
-            rect = CGRect(x: vf.minX, y: vf.minY + vf.height/2, width: vf.width/2, height: vf.height/2)
-        case .topRight:
-            rect = CGRect(x: vf.minX + vf.width/2, y: vf.minY + vf.height/2, width: vf.width/2, height: vf.height/2)
-        case .bottomLeft:
-            rect = CGRect(x: vf.minX, y: vf.minY, width: vf.width/2, height: vf.height/2)
-        case .bottomRight:
-            rect = CGRect(x: vf.minX + vf.width/2, y: vf.minY, width: vf.width/2, height: vf.height/2)
+            case .top:
+                // Anchor to TOP edge
+                rect.size.width  = vf.width
+                rect.size.height = halfH
+                rect.origin.x = vf.minX
+                rect.origin.y = vf.maxY - rect.height
 
-        case .maximize:
-            rect = vf
-        case .center70:
-            let w = vf.width * 0.70, h = vf.height * 0.70
-            rect = CGRect(x: vf.minX + (vf.width - w)/2,
-                          y: vf.minY + (vf.height - h)/2,
-                          width: w, height: h)
+            case .bottom:
+                // Anchor to BOTTOM edge
+                rect.size.width  = vf.width
+                rect.size.height = halfH
+                rect.origin.x = vf.minX
+                rect.origin.y = vf.minY
+
+            // CORNERS (2×2 grid)
+            case .topLeft:
+                rect.size.width  = halfW
+                rect.size.height = halfH
+                rect.origin.x = vf.minX                       // left edge
+                rect.origin.y = vf.maxY - rect.height        // top edge
+
+            case .topRight:
+                rect.size.width  = halfW
+                rect.size.height = halfH
+                rect.origin.x = vf.maxX - rect.width         // right edge
+                rect.origin.y = vf.maxY - rect.height        // top edge
+
+            case .bottomLeft:
+                rect.size.width  = halfW
+                rect.size.height = halfH
+                rect.origin.x = vf.minX                       // left edge
+                rect.origin.y = vf.minY                       // bottom edge
+
+            case .bottomRight:
+                rect.size.width  = halfW
+                rect.size.height = halfH
+                rect.origin.x = vf.maxX - rect.width         // right edge
+                rect.origin.y = vf.minY                       // bottom edge
+
+            case .maximize:
+                rect = vf
+
+            case .center70:
+                let w = vf.width * 0.70
+                let h = vf.height * 0.70
+                rect = CGRect(
+                    x: vf.minX + (vf.width - w) / 2.0,
+                    y: vf.minY + (vf.height - h) / 2.0,
+                    width:  w,
+                    height: h
+                )
+            
         }
 
         setFrontWindowFrame(rect, on: screen)
